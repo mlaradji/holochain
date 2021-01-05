@@ -92,7 +92,7 @@ pub mod wasm_test {
 
     // TODO: [ B-03669 ] can move this to an integration test (may need to switch to using a RealDnaStore)
     #[tokio::test(threaded_scheduler)]
-    async fn ribosome_authorized_call() {
+    async fn ribosome_authorized_call() -> anyhow::Result<()> {
         observability::test_run().ok();
         let (dna_file, _) = CoolDnaFile::unique_from_test_wasms(vec![TestWasm::Capability])
             .await
@@ -138,7 +138,7 @@ pub mod wasm_test {
                 "try_cap_claim",
                 CapFor(original_secret, bob_agent_id.clone().try_into().unwrap()),
             )
-            .await;
+            .await?;
 
         assert_matches!(output, ZomeCallResponse::Unauthorized(_, _, _, _));
 
@@ -146,7 +146,7 @@ pub mod wasm_test {
 
         let original_grant_hash: HeaderHash = conductor
             .call(&bobbo, "transferable_cap_grant", original_secret)
-            .await;
+            .await?;
 
         // ALICE CAN NOW CALL THE AUTHED REMOTE FN
 
@@ -156,7 +156,7 @@ pub mod wasm_test {
                 "try_cap_claim",
                 CapFor(original_secret, bob_agent_id.clone()),
             )
-            .await;
+            .await?;
 
         assert_eq!(
             response,
@@ -167,11 +167,11 @@ pub mod wasm_test {
 
         let new_grant_header_hash: HeaderHash = conductor
             .call(&bobbo, "roll_cap_grant", original_grant_hash)
-            .await;
+            .await?;
 
         let output: MaybeElement = conductor
             .call(&bobbo, "get_entry", new_grant_header_hash.clone())
-            .await;
+            .await?;
 
         let new_secret: CapSecret = match output.0 {
             Some(element) => match element.entry().to_grant_option() {
@@ -190,7 +190,7 @@ pub mod wasm_test {
                 "try_cap_claim",
                 CapFor(original_secret, bob_agent_id.clone().try_into().unwrap()),
             )
-            .await;
+            .await?;
 
         assert_matches!(output, ZomeCallResponse::Unauthorized(_, _, _, _));
 
@@ -200,7 +200,7 @@ pub mod wasm_test {
                 "try_cap_claim",
                 CapFor(new_secret, bob_agent_id.clone().try_into().unwrap()),
             )
-            .await;
+            .await?;
         assert_eq!(
             output,
             ZomeCallResponse::Ok(ExternOutput::new(().try_into().unwrap())),
@@ -210,7 +210,7 @@ pub mod wasm_test {
 
         let _: HeaderHash = conductor
             .call(&bobbo, "delete_cap_grant", new_grant_header_hash)
-            .await;
+            .await?;
 
         let output: ZomeCallResponse = conductor
             .call(
@@ -218,7 +218,7 @@ pub mod wasm_test {
                 "try_cap_claim",
                 CapFor(original_secret, bob_agent_id.clone().try_into().unwrap()),
             )
-            .await;
+            .await?;
 
         assert_matches!(output, ZomeCallResponse::Unauthorized(_, _, _, _));
 
@@ -228,12 +228,14 @@ pub mod wasm_test {
                 "try_cap_claim",
                 CapFor(new_secret, bob_agent_id.clone().try_into().unwrap()),
             )
-            .await;
+            .await?;
 
         // the inner response should be unauthorized
         assert_matches!(output, ZomeCallResponse::Unauthorized(_, _, _, _));
 
         let mut conductor = conductor;
         conductor.shutdown().await;
+
+        Ok(())
     }
 }

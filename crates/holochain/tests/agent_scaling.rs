@@ -189,7 +189,7 @@ async fn stuck_conductor_wasm_calls() -> anyhow::Result<()> {
     pub struct TwoInt(pub u32, pub u32);
 
     // Make init run to avoid head moved errors
-    let _: () = conductor.call(&alice, "slow_fn", TwoInt(0, 0)).await;
+    let _: () = conductor.call(&alice, "slow_fn", TwoInt(0, 0)).await?;
 
     let all_now = std::time::Instant::now();
     tracing::debug!("starting slow fn");
@@ -207,7 +207,10 @@ async fn stuck_conductor_wasm_calls() -> anyhow::Result<()> {
             async move {
                 let now = std::time::Instant::now();
                 tracing::debug!("starting slow fn {}", i);
-                let _: () = conductor.call(&alice, "slow_fn", TwoInt(i, 5)).await;
+                let _: () = conductor
+                    .call(&alice, "slow_fn", TwoInt(i, 5))
+                    .await
+                    .unwrap();
                 tracing::debug!("finished slow fn {} in {}", i, now.elapsed().as_secs());
             }
         });

@@ -143,7 +143,7 @@ mod tests {
 
         let _: () = conductors[0]
             .call(&cells[0].zome("zome1"), "signal_others", ())
-            .await;
+            .await?;
 
         tokio::time::delay_for(std::time::Duration::from_millis(1000)).await;
         assert_eq!(num_signals.load(Ordering::SeqCst), NUM_CONDUCTORS);

@@ -3,8 +3,8 @@
 
 use super::{CoolAgents, CoolApp, CoolAppBatch, CoolCell, CoolZome};
 use crate::conductor::{
-    api::ZomeCall, config::ConductorConfig, dna_store::DnaStore, handle::ConductorHandle,
-    Conductor, ConductorBuilder,
+    api::error::ConductorApiResult, api::ZomeCall, config::ConductorConfig, dna_store::DnaStore,
+    handle::ConductorHandle, Conductor, ConductorBuilder,
 };
 use futures::future;
 use hdk3::prelude::*;
@@ -90,7 +90,9 @@ impl CoolConductorBatch {
         dna_files: &[DnaFile],
     ) -> CoolAppBatch {
         if agents.len() != self.0.len() {
-            panic!("setup_app_for_zipped_agents must take as many Agents as there are Conductors in this batch.")
+            panic!(
+                "setup_app_for_zipped_agents must take as many Agents as there are Conductors in this batch."
+            )
         }
 
         let apps = self
@@ -389,7 +391,12 @@ pub struct CoolConductorHandle(pub(crate) ConductorHandle);
 impl CoolConductorHandle {
     /// Make a zome call to a Cell, as if that Cell were the caller. Most common case.
     /// No capability is necessary, since the authorship capability is automatically granted.
-    pub async fn call<I, O, F, E>(&self, zome: &CoolZome, fn_name: F, payload: I) -> O
+    pub async fn call<I, O, F, E>(
+        &self,
+        zome: &CoolZome,
+        fn_name: F,
+        payload: I,
+    ) -> ConductorApiResult<O>
     where
         E: std::fmt::Debug,
         FunctionName: From<F>,
@@ -409,7 +416,7 @@ impl CoolConductorHandle {
         zome: &CoolZome,
         fn_name: F,
         payload: I,
-    ) -> O
+    ) -> ConductorApiResult<O>
     where
         E: std::fmt::Debug,
         FunctionName: From<F>,
@@ -425,12 +432,13 @@ impl CoolConductorHandle {
             provenance: provenance.clone(),
             payload,
         };
-        let response = self.0.call_zome(call).await.unwrap().unwrap();
-        unwrap_to!(response => ZomeCallResponse::Ok)
+        let response = self.0.call_zome(call).await?.unwrap();
+        let out = unwrap_to!(response => ZomeCallResponse::Ok)
             .clone()
             .into_inner()
             .try_into()
-            .expect("Couldn't deserialize zome call output")
+            .expect("Couldn't deserialize zome call output");
+        Ok(out)
     }
 
     /// Manually await shutting down the conductor.

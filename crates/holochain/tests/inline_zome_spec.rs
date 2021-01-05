@@ -1,22 +1,51 @@
+#![cfg(feature = "test_utils")]
+
 use hdk3::prelude::*;
-use holochain::test_utils::cool::{CoolAgents, CoolConductor, CoolDnaFile, MaybeElement};
-use holochain::test_utils::display_agent_infos;
+use holochain::{
+    conductor::{
+        api::error::{ConductorApiError, ConductorApiResult},
+        CellError,
+    },
+    core::{workflow::error::WorkflowError, SourceChainError},
+    test_utils::display_agent_infos,
+};
+use holochain::{
+    core::ribosome::guest_callback::validate::ValidateResult,
+    test_utils::cool::{CoolAgents, CoolConductor, CoolDnaFile, MaybeElement},
+};
 use holochain_types::dna::zome::inline_zome::InlineZome;
 use holochain_zome_types::element::ElementEntry;
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, SerializedBytes, derive_more::From)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    SerializedBytes,
+    derive_more::From,
+)]
 #[serde(transparent)]
 #[repr(transparent)]
 struct AppString(String);
 
+impl AppString {
+    fn new<S: Into<String>>(s: S) -> Self {
+        AppString(s.into())
+    }
+}
+
+/// An InlineZome with simple Create and Read operations
 fn simple_crud_zome() -> InlineZome {
     let string_entry_def = EntryDef::default_with_id("string");
     let unit_entry_def = EntryDef::default_with_id("unit");
 
     InlineZome::new_unique(vec![string_entry_def.clone(), unit_entry_def.clone()])
-        .callback("create_string", move |api, s: String| {
+        .callback("create_string", move |api, s: AppString| {
             let entry_def_id: EntryDefId = string_entry_def.id.clone();
-            let entry = Entry::app(AppString::from(s).try_into().unwrap()).unwrap();
+            let entry = Entry::app(s.try_into().unwrap()).unwrap();
             let hash = api.create((entry_def_id, entry))?;
             Ok(hash)
         })
@@ -32,6 +61,7 @@ fn simple_crud_zome() -> InlineZome {
         })
 }
 
+/// Simple scenario involving two agents using the same DNA
 #[tokio::test(threaded_scheduler)]
 #[cfg(feature = "test_utils")]
 async fn inline_zome_2_agents_1_dna() -> anyhow::Result<()> {
@@ -54,13 +84,13 @@ async fn inline_zome_2_agents_1_dna() -> anyhow::Result<()> {
     // Call the "create" zome fn on Alice's app
     let hash: HeaderHash = conductor
         .call(&alice.zome("zome1"), "create_unit", ())
-        .await;
+        .await?;
 
     // Wait long enough for Bob to receive gossip (TODO: make deterministic)
     tokio::time::delay_for(std::time::Duration::from_millis(500)).await;
 
     // Verify that bobbo can run "read" on his cell and get alice's Header
-    let element: MaybeElement = conductor.call(&bobbo.zome("zome1"), "read", hash).await;
+    let element: MaybeElement = conductor.call(&bobbo.zome("zome1"), "read", hash).await?;
     let element = element
         .0
         .expect("Element was None: bobbo couldn't `get` it");
@@ -75,6 +105,7 @@ async fn inline_zome_2_agents_1_dna() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Simple scenario involving three agents using an app with two DNAs
 #[tokio::test(threaded_scheduler)]
 #[cfg(feature = "test_utils")]
 async fn inline_zome_3_agents_2_dnas() -> anyhow::Result<()> {
@@ -101,10 +132,10 @@ async fn inline_zome_3_agents_2_dnas() -> anyhow::Result<()> {
 
     let hash_foo: HeaderHash = conductor
         .call(&alice_foo.zome("foozome"), "create_unit", ())
-        .await;
+        .await?;
     let hash_bar: HeaderHash = conductor
         .call(&alice_bar.zome("barzome"), "create_unit", ())
-        .await;
+        .await?;
 
     // Two different DNAs, so HeaderHashes should be different.
     assert_ne!(hash_foo, hash_bar);
@@ -116,7 +147,7 @@ async fn inline_zome_3_agents_2_dnas() -> anyhow::Result<()> {
     // on the "foo" DNA
     let element: MaybeElement = conductor
         .call(&bobbo_foo.zome("foozome"), "read", hash_foo)
-        .await;
+        .await?;
     let element = element
         .0
         .expect("Element was None: bobbo couldn't `get` it");
@@ -131,7 +162,7 @@ async fn inline_zome_3_agents_2_dnas() -> anyhow::Result<()> {
     // Let's do it with the CoolZome instead of the CoolCell too, for fun
     let element: MaybeElement = conductor
         .call(&carol_bar.zome("barzome"), "read", hash_bar)
-        .await;
+        .await?;
     let element = element
         .0
         .expect("Element was None: carol couldn't `get` it");
@@ -171,6 +202,79 @@ async fn invalid_cell() -> anyhow::Result<()> {
 
     // Can't finish this test because there's no way to construct HolochainP2pEvents
     // and I can't directly call query on the conductor because it's private.
+
+    Ok(())
+}
+
+/// Simple zome which contains a validation rule which can fail
+fn simple_validation_zome() -> InlineZome {
+    let entry_def = EntryDef::default_with_id("string");
+
+    InlineZome::new_unique(vec![entry_def.clone()])
+        .callback("create", move |api, s: AppString| {
+            let entry_def_id: EntryDefId = entry_def.id.clone();
+            let entry = Entry::app(s.try_into().unwrap()).unwrap();
+            let hash = api.create((entry_def_id, entry))?;
+            Ok(hash)
+        })
+        .callback("read", |api, hash: HeaderHash| {
+            api.get((hash.into(), GetOptions::default()))
+                .map_err(Into::into)
+        })
+        .callback("validate_create_entry", |_api, data: ValidateData| {
+            let s: AppString = data.element.entry().to_app_option().unwrap().unwrap();
+            if &s.0 == "" {
+                Ok(ValidateResult::Invalid("No empty strings allowed".into()))
+            } else {
+                Ok(ValidateResult::Valid)
+            }
+        })
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn simple_validation() -> anyhow::Result<()> {
+    let (dna_file, _) =
+        CoolDnaFile::unique_from_inline_zome("zome", simple_validation_zome()).await?;
+    let mut conductor = CoolConductor::from_standard_config().await;
+    let (alice, bobbo) = CoolAgents::two(conductor.keystore()).await;
+    let apps = conductor
+        .setup_app_for_agents("app", &[alice.clone(), bobbo.clone()], &[dna_file])
+        .await;
+    let ((alice,), (bobbo,)) = apps.into_tuples();
+
+    let alice = alice.zome("zome");
+    let _bobbo = bobbo.zome("zome");
+
+    // This call passes validation
+    let h1: HeaderHash = conductor
+        .call(&alice, "create", AppString::new("A"))
+        .await?;
+    let e1: MaybeElement = conductor.call(&alice, "read", &h1).await?;
+    let s1: AppString = e1.0.unwrap().entry().to_app_option().unwrap().unwrap();
+    assert_eq!(s1, AppString::new("A"));
+
+    // This call fails validation, and so results in an error
+    let err: ConductorApiResult<HeaderHash> =
+        conductor.call(&alice, "create", AppString::new("")).await;
+
+    // This is kind of ridiculous, but we can't use assert_matches! because
+    // there is a Box in the mix.
+    let correct = match err {
+        Err(ConductorApiError::CellError(e)) => match e {
+            CellError::WorkflowError(e) => match *e {
+                WorkflowError::SourceChainError(e) => match e {
+                    SourceChainError::InvalidCommit(reason) => {
+                        &reason == "No empty strings allowed"
+                    }
+                    _ => false,
+                },
+                _ => false,
+            },
+            _ => false,
+        },
+        _ => false,
+    };
+    assert!(correct);
 
     Ok(())
 }

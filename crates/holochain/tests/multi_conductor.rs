@@ -67,13 +67,17 @@ async fn multi_conductor() -> anyhow::Result<()> {
     let ((alice,), (bobbo,), (_carol,)) = apps.into_tuples();
 
     // Call the "create" zome fn on Alice's app
-    let hash: HeaderHash = conductors[0].call(&alice.zome("zome1"), "create", ()).await;
+    let hash: HeaderHash = conductors[0]
+        .call(&alice.zome("zome1"), "create", ())
+        .await?;
 
     // Wait long enough for Bob to receive gossip (TODO: make deterministic)
     tokio::time::delay_for(std::time::Duration::from_millis(5000)).await;
 
     // Verify that bobbo can run "read" on his cell and get alice's Header
-    let element: MaybeElement = conductors[1].call(&bobbo.zome("zome1"), "read", hash).await;
+    let element: MaybeElement = conductors[1]
+        .call(&bobbo.zome("zome1"), "read", hash)
+        .await?;
     let element = element
         .0
         .expect("Element was None: bobbo couldn't `get` it");
@@ -121,12 +125,12 @@ async fn invalid_cell() -> anyhow::Result<()> {
     // Call the "create" zome fn on Alice's app
     let hash: HeaderHash = conductors[0]
         .call(&alice.zome("zome1"), "create", Post("1".to_string()))
-        .await;
+        .await?;
 
     // Verify that bobbo can run "read" on his cell and get alice's Header
     let element: MaybeElement = conductors[0]
         .call(&alice.zome("zome1"), "read", hash.clone())
-        .await;
+        .await?;
     let element = element
         .0
         .expect("Element was None: bobbo couldn't `get` it");
@@ -138,7 +142,9 @@ async fn invalid_cell() -> anyhow::Result<()> {
         ElementEntry::Present(Entry::app(Post("1".to_string()).try_into().unwrap()).unwrap())
     );
     conductors[1].startup().await;
-    let _: MaybeElement = conductors[1].call(&bobbo.zome("zome1"), "read", hash).await;
+    let _: MaybeElement = conductors[1]
+        .call(&bobbo.zome("zome1"), "read", hash)
+        .await?;
 
     // Take both other conductors offline and commit a hash they don't have
     // then bring them back with the original offline.
@@ -147,29 +153,29 @@ async fn invalid_cell() -> anyhow::Result<()> {
 
     let hash: HeaderHash = conductors[1]
         .call(&bobbo.zome("zome1"), "create", Post("2".to_string()))
-        .await;
+        .await?;
     conductors[1].shutdown().await;
     conductors[0].startup().await;
     let r: MaybeElement = conductors[0]
         .call(&alice.zome("zome1"), "read", hash.clone())
-        .await;
+        .await?;
     assert!(r.0.is_none());
     conductors[2].startup().await;
     let r: MaybeElement = conductors[2]
         .call(&carol.zome("zome1"), "read", hash.clone())
-        .await;
+        .await?;
     assert!(r.0.is_none());
     conductors[1].startup().await;
 
     let _: HeaderHash = conductors[0]
         .call(&alice.zome("zome1"), "create", Post("3".to_string()))
-        .await;
+        .await?;
     let _: HeaderHash = conductors[1]
         .call(&bobbo.zome("zome1"), "create", Post("4".to_string()))
-        .await;
+        .await?;
     let _: HeaderHash = conductors[2]
         .call(&carol.zome("zome1"), "create", Post("5".to_string()))
-        .await;
+        .await?;
 
     let expected_count = WaitOps::start() * 3 + WaitOps::ENTRY * 5;
     // wait_for_integration_10s(&alice.env().await, expected_count).await;
@@ -178,7 +184,7 @@ async fn invalid_cell() -> anyhow::Result<()> {
     wait_for_integration_with_others_10s(&alice_env, &envs, expected_count).await;
     let r: MaybeElement = conductors[0]
         .call(&alice.zome("zome1"), "read", hash.clone())
-        .await;
+        .await?;
     assert!(r.0.is_some());
     Ok(())
 }

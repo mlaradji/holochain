@@ -6,13 +6,14 @@ members = [
   "crates/hdk3",
   "crates/hdk3_derive",
   "crates/holo_hash",
-  
+
   "crates/holochain",
   "crates/holochain_cascade",
   "crates/holochain_conductor_api",
   "crates/holochain_lmdb",
   "crates/holochain_p2p",
   "crates/holochain_keystore",
+  "crates/holochain_sqlite",
   "crates/holochain_state",
   "crates/holochain_types",
   "crates/holochain_websocket",
@@ -22,13 +23,13 @@ members = [
   "crates/kitsune_p2p/transport_quic",
   "crates/kitsune_p2p/types",
   "crates/kitsune_p2p/proxy",
-  
+
   "crates/test_utils/wasm",
   "crates/test_utils/wasm_common",
 ]
 
 exclude = [
-  
+
 ]
 
 # These are the default params for RELEASE target

@@ -1625,6 +1625,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "holochain_sqlite"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "byteorder",
+ "chrono",
+ "derive_more",
+ "either",
+ "failure",
+ "fallible-iterator",
+ "fixt",
+ "futures",
+ "holo_hash",
+ "holochain_keystore",
+ "holochain_serialized_bytes",
+ "holochain_zome_types",
+ "lazy_static",
+ "must_future",
+ "nanoid",
+ "observability",
+ "parking_lot",
+ "rand 0.7.3",
+ "rkv",
+ "rmp-serde",
+ "serde",
+ "serde_derive",
+ "shrinkwraprs",
+ "tempdir",
+ "thiserror",
+ "tokio",
+ "tokio_safe_block_on",
+ "tracing",
+ "tracing-futures",
+]
+
+[[package]]
 name = "holochain_state"
 version = "0.0.1"
 dependencies = [

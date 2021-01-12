@@ -150,6 +150,10 @@ impl GetDb for EnvironmentRead {
 #[derive(Clone, Shrinkwrap, Into, derive_more::From)]
 pub struct EnvironmentWrite(EnvironmentRead);
 
+/// TODO remove
+#[deprecated = "placeholder for sqlite type"]
+pub type DbConnection = EnvironmentWrite;
+
 impl EnvironmentWrite {
     /// Create an environment,
     pub fn new(
